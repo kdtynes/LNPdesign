@@ -1,66 +1,19 @@
 import pandas as pd
-from sklearn import svm
-from pandas import ExcelWriter
-from pandas import ExcelFile
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
 from sklearn import metrics
-from sklearn.ensemble import RandomForestClassifier
-
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.manifold import TSNE
-
-from sklearn import model_selection
-from sklearn.model_selection import KFold
 import xgboost as xgb
-import random
-from imblearn.over_sampling import SMOTE, ADASYN, BorderlineSMOTE, SVMSMOTE, SMOTENC, KMeansSMOTE, RandomOverSampler
-from imblearn.combine import SMOTEENN, SMOTETomek
-from collections import Counter
-from mpl_toolkits.mplot3d import Axes3D
-from time import time
-from sklearn import manifold
-from matplotlib.ticker import NullFormatter
-import operator, itertools 
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
+from imblearn.over_sampling import SMOTE
+import operator, itertools, pickle, random, ast
 import warnings
 warnings.filterwarnings('ignore')
-from tqdm import tqdm
-import pickle
-import ast
 
-
-#Loading data
-model_name = 'RNA' #'mRNA', 'siRNA' 
-
-data_train = pd.read_csv('./datasets/'+model_name+'_train.csv')
-
-data_test = pd.read_csv('./datasets/'+model_name+'_test.csv')
-
-#Drop Payload if not RNA model (RNA model contains both mRNA and siRNA nanoparticles)
-# data_train = data_train.drop(['Payload'],1)
-# data_test = data_test.drop(['Payload'],1)
-    
-#Separate X and y
-y_train = np.array(data_train['label'])
-X_train = data_train.drop(['label','Lipomer', 'Cholesterol', 'HelperLipid', 'PEGChain', 'PEG MW', 'diameter'], 1)
-y_test = np.array(data_test['label'])
-X_test = data_test.drop(['label','Lipomer', 'Cholesterol', 'HelperLipid', 'PEGChain', 'PEG MW', 'diameter'], 1)
-
-
-# Binary Classification using traditional ML techniques - XGBoost
+# Binary Classification using XGBoost
 
 clf_VERSION = 'v1'
-K = 5 # 5 fold cv
+K = 5 # 5 fold cross validation
 
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
@@ -86,7 +39,6 @@ def plot_confusion_matrix(cm, classes,
     else:
         print('Confusion matrix, without normalization')
 
-#    print(cm)
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         plt.text(j, i, cm[i, j],
@@ -112,15 +64,11 @@ def show_confusion_matrix(y, pred_array):
     plt.show()
     return
 
-
-def sigmoid(x):
-    return 1 / (1 + math.exp(-x))
-
 def get_auc_plot(y, scores):
     y = np.array(y).astype(int)
     fpr, tpr, thresholds = metrics.roc_curve(y, scores)
 
-    # Getting accuracy, sensitivity and accuracy plot for varying thresholds. 
+    # Compute ROC AUC and render the ROC curve. 
     accuracy_array = []
     sensitivity_array = [x*100 for x in tpr]
     specificity_array = [(1-x)*100 for x in fpr]#(1-fpr)*100
@@ -157,7 +105,6 @@ def get_auc(y, scores):
         if fpr[i] > 0.01:
             break
     return roc_auc, tpr[i], fpr[i]
-
 
 def trainXGB(Xtrain, ytrain, Xtest, ytest, importance_array, column_names, hyperparameters, verbose):
     dtrain = xgb.DMatrix(Xtrain,label=ytrain)
@@ -253,11 +200,6 @@ def feature_selection(Xtrain, Xtest, importance_array, column_names, verbose):
     imp_vals = imp_vals.loc[imp_vals['fscore'] > threshold] #threshold importance
     filt = imp_vals.to_numpy()[:,0].astype(int)
     
-    #threshold number of features
-#     num_feat = 234
-#     imp_vals = imp_vals.nlargest(num_feat,'fscore')
-#     filt = imp_vals.to_numpy()[:,0].astype(int)
-    
     #filter both training and testing data
     column_names = column_names[filt]
     Xtrain_filt = np.array(Xtrain)[:, filt]
@@ -316,95 +258,6 @@ def pandas_classifier(df, runXGB, K, importance_array, hyperparameters, verbose 
     return importance_array, sum(np.array(auc_fold))/int(K), sum(np.array(auc_fold))/int(K)
 
 
-#Hyperparameter Tuning - Random Search
-
-# Hyperparameter grid
-param_grid = {
-    'eta': [0.01, 0.05, 0.07, 0.1, 0.12, 0.14, 0.2],
-    'max_depth': list(range(3,10)),
-    'gamma': [i/10.0 for i in range(0,5)],
-    'alpha': [1e-5, 1e-2, 0.1, 0.5, 1, 5, 10],
-    'lambda': [1e-5, 1e-2, 0.1, 0.5, 1, 5, 10],
-    'subsample': [i/10.0 for i in range(5,10)],
-    'colsample_bytree': [i/10.0 for i in range(5,10)],
-}
-
-constant_params = {
-    'objective': 'binary:logistic', #'multi:softprob' multi:softmax'
-    'min_child_weight': 1,
-    'verbosity': 0,
-    'nthread': 6,
-    'eval_metric': 'auc',#'mlogloss'
-    'seed': 15,
-    'scale_pos_weight': 3, # sum(negative cases)/sum(positive cases)
-}
-
-
-# def random_search(data, y, param_grid, max_evals = 100):
-#     """Random search for hyperparameter optimization"""
-#     # Dataframe for results
-#     results = pd.DataFrame(columns = ['auc', 'accuracy', 'params', 'iteration'],
-#                                   index = list(range(max_evals)))
-    
-#     # Keep searching until reach max evaluations
-#     for i in range(max_evals):
-#         # Choose random hyperparameters
-#         hyperparameters = {k: random.sample(v, 1)[0] for k, v in param_grid.items()}
-#         hyperparameters.update(constant_params)
-        
-#         # Evaluate randomly selected hyperparameters
-#         df = pd.concat([data, pd.DataFrame(pd.Series(y, name='label'))], axis=1)
-#         importance_array = pd.DataFrame()
-#         verbose = False
-#         importance_array, auc, accuracy = pandas_classifier(df, 1, 5, importance_array, hyperparameters, verbose)
-        
-#         #Add row to results df
-#         results.loc[i, :] = [auc, accuracy, hyperparameters, i]
-        
-#     # Sort with best score on top
-#     results.sort_values('auc', ascending = False, inplace = True)
-#     results.reset_index(inplace = True)
-#     return results 
-
-
-# #First Round
-
-# np.random.seed(15)
-# random.seed(15)
-# time_1 = time()
-# random_results = random_search(X_train, y_train, param_grid, 100)
-# time_2 = time()
-# time_elapsed = (time_2 - time_1)/60
-# print('Time Elapsed: ',time_elapsed,' minutes')
-
-# # Get the best parameters
-# random_search_params = random_results.loc[0, 'params']
-# random_search_AUC = random_results.loc[0, 'auc']
-# random_search_accuracy = random_results.loc[0, 'accuracy']
-
-# print('Best Parameters: ',random_search_params)
-# print('Best AUC: ',random_search_AUC)
-# print('Best Accuracy: ',random_search_accuracy)
-
-# pd.set_option('display.max_rows', None)
-# pd.set_option('display.max_columns', None)
-# pd.set_option('display.width', None)
-# pd.set_option('display.max_colwidth', -1)
-
-# #Store Results
-# name = model_name
-# random_results.to_csv('./params/RS_results_'+name+'.csv', index=False)
-# with open('./params/hyperparameters'+name+'.pkl', 'wb') as f:
-#         pickle.dump(random_search_params, f, pickle.HIGHEST_PROTOCOL)
-        
-# random_results
-
-
-# pd.reset_option('all', True)
-
-
-#Test Final Model
-
 def train_model(X_train, y_train, X_val, y_val, random_search_params):
     #Parameters
     np.random.seed(15)
@@ -438,37 +291,53 @@ def test_model(X_test, y_test, clf, index, scaler, pca, imp_features, verbose):
     print("Accuracy: %.2f%%" % (accuracy * 100.0))
     show_confusion_matrix(y_test, np.round(pred_array))
 
+def main():
 
-#Load Results
-name = model_name
-random_results = pd.read_csv('./models/params/RS_results_'+name+'.csv')
+    #Load data
+    model_name = 'RNA' #'mRNA', 'siRNA' 
 
-with open('./models/params/hyperparameters'+name+'.pkl', 'rb') as f:
-    random_search_params = pickle.load(f)
+    data_train = pd.read_csv('../datasets/'+model_name+'_train.csv')
+    data_test = pd.read_csv('../datasets/'+model_name+'_test.csv')
 
-#Select different parameters
-rank = 0
-random_search_params = ast.literal_eval(random_results.loc[rank, 'params'])
-
-print(random_search_params)
-random_results
-
-
-# Validate Model
-
-# Best hyperparameters from random search
-np.random.seed(15)
-random.seed(15)
-df = pd.concat([X_train, pd.DataFrame(pd.Series(y_train, name='label'))], axis=1)
-importance_array = pd.DataFrame()
-verbose = False
-importance_array, auc, accuracy = pandas_classifier(df, 1, 5, importance_array, random_search_params, verbose)
+    #Drop Payload if not RNA model (RNA model contains both mRNA and siRNA nanoparticles)
+    # data_train = data_train.drop(['Payload'],1)
+    # data_test = data_test.drop(['Payload'],1)
+        
+    #Separate X and y
+    y_train = np.array(data_train['label'])
+    X_train = data_train.drop(['label','Lipomer', 'Cholesterol', 'HelperLipid', 'PEGChain', 'PEG MW', 'diameter'], 1)
+    y_test = np.array(data_test['label'])
+    X_test = data_test.drop(['label','Lipomer', 'Cholesterol', 'HelperLipid', 'PEGChain', 'PEG MW', 'diameter'], 1)
 
 
-# Train Model
-clf, index, scaler, pca, imp_features, verbose  = train_model(X_train, y_train, X_test, y_test, random_search_params)
+    #Load Parameters
+    name = model_name
+    random_results = pd.read_csv('./params/RS_results_'+name+'.csv')
+
+    with open('./params/hyperparameters'+name+'.pkl', 'rb') as f:
+        random_search_params = pickle.load(f)
+
+    #Select different parameters
+    rank = 0
+    random_search_params = ast.literal_eval(random_results.loc[rank, 'params'])
+
+    # Validate Model
+
+    # Best hyperparameters from random search
+    np.random.seed(15)
+    random.seed(15)
+    df = pd.concat([X_train, pd.DataFrame(pd.Series(y_train, name='label'))], axis=1)
+    importance_array = pd.DataFrame()
+    verbose = False
+    importance_array, auc, accuracy = pandas_classifier(df, 1, 5, importance_array, random_search_params, verbose)
 
 
-# Test Model
-test_model(X_test, y_test, clf, index, scaler, pca, imp_features, verbose)
+    # Train Model
+    clf, index, scaler, pca, imp_features, verbose  = train_model(X_train, y_train, X_test, y_test, random_search_params)
 
+
+    # Test Model
+    test_model(X_test, y_test, clf, index, scaler, pca, imp_features, verbose)
+
+if __name__ == '__main__':
+    main()
