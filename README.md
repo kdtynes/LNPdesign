@@ -1,6 +1,6 @@
 # LNP Stability Predictions
 
-This repository contains code and data associated with the manuscript, **"Machine learning predicts differences in the stability of lipid nanoparticles encapsulating mRNA or siRNA"** (Tynes, Shrivastava, and Song). The study predicts the formation of stable four-component lipid nanoparticles with gradient boosted decision trees, integrated with modred molecular descriptors to encode chemical properties and SAPT0 lipomer-cholesterol quantum- chemical interaction energies computed with AP-Net. Models are trained on nucleic acid payload specific datasets and validated on clinically relevant COVID-19 vaccine LNP chemistries.
+This repository contains code and data associated with the manuscript, **"Machine learning predicts differences in the stability of lipid nanoparticles encapsulating mRNA or siRNA"** (Tynes et al.) currently under review. The study predicts the formation of stable four-component lipid nanoparticles with gradient boosted decision trees, integrated with modred molecular descriptors to encode chemical properties and SAPT0 lipomer-cholesterol quantum- chemical interaction energies computed with AP-Net. Models are trained on nucleic acid payload specific datasets and validated on clinically relevant COVID-19 vaccine LNP chemistries.
 
 ## Dependencies
 
